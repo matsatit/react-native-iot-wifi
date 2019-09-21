@@ -1,18 +1,21 @@
 package com.tadasr.IOTWifi;
 
-import com.facebook.react.bridge.*;
-
+import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.NetworkRequest;
+import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
-import android.net.wifi.WifiConfiguration;
-import android.content.Context;
 import android.os.Build;
 import android.util.Log;
+
+import com.facebook.react.bridge.Callback;
+import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReactContextBaseJavaModule;
+import com.facebook.react.bridge.ReactMethod;
 
 import java.util.List;
 
@@ -39,6 +42,7 @@ class IOTWifiCallback {
 }
 
 public class IOTWifiModule extends ReactContextBaseJavaModule {
+    private static final String TAG = "IOTWifiModule";
     private WifiManager wifiManager;
     private ConnectivityManager connectivityManager;
     private ReactApplicationContext context;
@@ -83,40 +87,47 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
 
     private void connectToWifi(String ssid, String passphrase, Boolean isWEP, Boolean bindNetwork, final Callback callback) {
         IOTWifiCallback iotWifiCallback = new IOTWifiCallback(callback);
+//        Log.d(TAG, "connectToWifi: begin");
         if (!removeSSID(ssid)) {
             iotWifiCallback.invoke(errorFromCode(FailureCodes.SYSTEM_ADDED_CONFIG_EXISTS));
             return;
         }
+//        Log.d(TAG, "connectToWifi: begin01");
 
         WifiConfiguration configuration = createWifiConfiguration(ssid, passphrase, isWEP);
         int networkId = wifiManager.addNetwork(configuration);
-
+//        Log.d(TAG, "connectToWifi: begin02");
         if (networkId != -1) {
+//            Log.d(TAG, "connectToWifi: begin03");
             // Enable it so that android can connect
             wifiManager.disconnect();
-            boolean success =  wifiManager.enableNetwork(networkId, true);
+            boolean success = wifiManager.enableNetwork(networkId, true);
             if (!success) {
                 iotWifiCallback.invoke(errorFromCode(FailureCodes.FAILED_TO_ADD_CONFIG));
                 return;
             }
+//            Log.d(TAG, "connectToWifi: begin04");
             success = wifiManager.reconnect();
             if (!success) {
                 iotWifiCallback.invoke(errorFromCode(FailureCodes.FAILED_TO_CONNECT));
                 return;
             }
-            boolean connected = pollForValidSSSID(10, ssid);
+//            Log.d(TAG, "connectToWifi: begin05");
+            boolean connected = pollForValidSSSID(20, ssid);
             if (!connected) {
                 iotWifiCallback.invoke(errorFromCode(FailureCodes.FAILED_TO_CONNECT));
                 return;
             }
+//            Log.d(TAG, "connectToWifi: begin06");
             if (!bindNetwork) {
                 iotWifiCallback.invoke();
                 return;
             }
             try {
+//                Log.d(TAG, "connectToWifi: begin07");
                 bindToNetwork(ssid, iotWifiCallback);
             } catch (Exception e) {
-                Log.d("IoTWifi", "Failed to bind to Wifi: " + ssid);
+                Log.d(TAG, "connectToWifi Failed Wifi: " + ssid);
                 iotWifiCallback.invoke();
             }
         } else {
@@ -229,6 +240,7 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
         if (existingNetworkId == -1) {
             return success;
         }
+        success = wifiManager.disableNetwork(existingNetworkId);
         success = wifiManager.removeNetwork(existingNetworkId);
         if (success && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             success = wifiManager.saveConfiguration();
@@ -268,9 +280,10 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
         if (configList != null) {
             for (WifiConfiguration wifiConfig : configList) {
                 String savedSSID = wifiConfig.SSID;
-                if (savedSSID == null) continue; // In few cases SSID is found to be null, ignore those configs
+                if (savedSSID == null)
+                    continue; // In few cases SSID is found to be null, ignore those configs
                 if (savedSSID.equals(comparableSSID)) {
-                    Log.d("IoTWifi", "Found Matching Wifi: "+ wifiConfig.toString());
+                    Log.d("IoTWifi", "Found Matching Wifi: " + wifiConfig.toString());
                     existingNetworkConfigForSSID = wifiConfig;
                     break;
 
