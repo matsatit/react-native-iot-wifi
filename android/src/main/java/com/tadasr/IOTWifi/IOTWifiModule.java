@@ -232,6 +232,7 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
         // Remove the existing configuration for this network
         WifiConfiguration existingNetworkConfigForSSID = getExistingNetworkConfig(ssid);
 
+        Log.d(TAG, "removeSSID: begin");
         //No Config found
         if (existingNetworkConfigForSSID == null) {
             return success;
@@ -240,11 +241,16 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
         if (existingNetworkId == -1) {
             return success;
         }
-        success = wifiManager.disableNetwork(existingNetworkId);
-        success = wifiManager.removeNetwork(existingNetworkId);
+        Log.d(TAG, "removeSSID: begin01");
+        boolean isDisableSuccess = wifiManager.disableNetwork(existingNetworkId);
+        Log.d(TAG, "removeSSID: begin02 " + isDisableSuccess);
+        boolean isRemoveSuccess = wifiManager.removeNetwork(existingNetworkId);
+        success = isDisableSuccess || isRemoveSuccess;
+        Log.d(TAG, "removeSSID: begin03 " + isRemoveSuccess);
         if (success && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             success = wifiManager.saveConfiguration();
         }
+        Log.d(TAG, "removeSSID: end " + success);
         //If not our config then success would be false
         return success;
     }
