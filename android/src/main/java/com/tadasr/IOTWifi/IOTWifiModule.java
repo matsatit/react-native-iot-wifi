@@ -6,10 +6,12 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.NetworkRequest;
+import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
+import android.text.TextUtils;
 import android.util.Log;
 
 import com.facebook.react.bridge.Callback;
@@ -92,13 +94,33 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
             iotWifiCallback.invoke(errorFromCode(FailureCodes.SYSTEM_ADDED_CONFIG_EXISTS));
             return;
         }
+
+        ScanResult scanResult = this.find(ssid);
 //        Log.d(TAG, "connectToWifi: begin01");
 
-        WifiConfiguration configuration = createWifiConfiguration(ssid, passphrase, isWEP);
-        int networkId = wifiManager.addNetwork(configuration);
-//        Log.d(TAG, "connectToWifi: begin02");
+        WifiConfiguration configuration = createWifiConfiguration(ssid, passphrase, scanResult.capabilities);
+
+        List<WifiConfiguration> mWifiConfigList = wifiManager.getConfiguredNetworks();
+
+        int networkId = -1;
+
+        // Use the existing network config if exists
+        for (WifiConfiguration wifiConfig : mWifiConfigList) {
+            if (wifiConfig.SSID.equals(configuration.SSID)) {
+                configuration = wifiConfig;
+                networkId = configuration.networkId;
+            }
+        }
+
+        // If network not already in configured networks add new network
+        if (networkId == -1) {
+            networkId = wifiManager.addNetwork(configuration);
+
+        }
+
+        Log.d(TAG, "connectToWifi: begin02");
         if (networkId != -1) {
-//            Log.d(TAG, "connectToWifi: begin03");
+            Log.d(TAG, "connectToWifi: begin03");
             // Enable it so that android can connect
             wifiManager.disconnect();
             boolean success = wifiManager.enableNetwork(networkId, true);
@@ -106,25 +128,25 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
                 iotWifiCallback.invoke(errorFromCode(FailureCodes.FAILED_TO_ADD_CONFIG));
                 return;
             }
-//            Log.d(TAG, "connectToWifi: begin04");
+            Log.d(TAG, "connectToWifi: begin04");
             success = wifiManager.reconnect();
             if (!success) {
                 iotWifiCallback.invoke(errorFromCode(FailureCodes.FAILED_TO_CONNECT));
                 return;
             }
-//            Log.d(TAG, "connectToWifi: begin05");
+            Log.d(TAG, "connectToWifi: begin05");
             boolean connected = pollForValidSSSID(20, ssid);
             if (!connected) {
                 iotWifiCallback.invoke(errorFromCode(FailureCodes.FAILED_TO_CONNECT));
                 return;
             }
-//            Log.d(TAG, "connectToWifi: begin06");
+            Log.d(TAG, "connectToWifi: begin06");
             if (!bindNetwork) {
                 iotWifiCallback.invoke();
                 return;
             }
             try {
-//                Log.d(TAG, "connectToWifi: begin07");
+                Log.d(TAG, "connectToWifi: begin07");
                 bindToNetwork(ssid, iotWifiCallback);
             } catch (Exception e) {
                 Log.d(TAG, "connectToWifi Failed Wifi: " + ssid);
@@ -135,20 +157,47 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
         }
     }
 
-    private WifiConfiguration createWifiConfiguration(String ssid, String passphrase, Boolean isWEP) {
+    private WifiConfiguration createWifiConfiguration(String ssid, String passphrase, String capabilities) {
         WifiConfiguration configuration = new WifiConfiguration();
-        configuration.SSID = String.format("\"%s\"", ssid);
+        configuration.allowedAuthAlgorithms.clear();
+        configuration.allowedGroupCiphers.clear();
+        configuration.allowedKeyManagement.clear();
+        configuration.allowedPairwiseCiphers.clear();
+        configuration.allowedProtocols.clear();
 
-        if (passphrase.equals("")) {
+        configuration.SSID = String.format("\"%s\"", ssid);
+        if (!TextUtils.isEmpty(capabilities)) {
+            Boolean isWEP = capabilities.contains("WEP");
+            if (passphrase.equals("")) {
+                configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+            } else if (isWEP) {
+
+                configuration.wepKeys[0] = "\"" + passphrase + "\"";
+                configuration.wepTxKeyIndex = 0;
+                configuration.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN);
+                configuration.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.SHARED);
+                configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+                configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP40);
+            } else if (capabilities.contains("WPA") || capabilities.contains("WPA2") || capabilities.contains("WPA/WPA2 PSK")) { // WPA/WPA2
+                configuration.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN);
+
+                configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
+                configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
+
+                configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+
+                configuration.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
+                configuration.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
+
+                configuration.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
+                configuration.allowedProtocols.set(WifiConfiguration.Protocol.WPA);
+                configuration.status = WifiConfiguration.Status.ENABLED;
+                configuration.preSharedKey = String.format("\"%s\"", passphrase);
+            }
+        } else {
             configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-        } else if (isWEP) {
-            configuration.wepKeys[0] = "\"" + passphrase + "\"";
-            configuration.wepTxKeyIndex = 0;
-            configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-            configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP40);
-        } else { // WPA/WPA2
-            configuration.preSharedKey = "\"" + passphrase + "\"";
         }
+
 
         if (!wifiManager.isWifiEnabled()) {
             wifiManager.setWifiEnabled(true);
@@ -169,6 +218,18 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
             return false;
         }
         return false;
+    }
+
+    private ScanResult find(String ssid) {
+        List<ScanResult> results = wifiManager.getScanResults();
+        boolean connected = false;
+        for (ScanResult result : results) {
+            String resultString = "" + result.SSID;
+            if (!TextUtils.isEmpty(ssid) && ssid.equals(resultString)) {
+                return result;
+            }
+        }
+        return null;
     }
 
     private void bindToNetwork(final String ssid, final IOTWifiCallback callback) {
@@ -282,7 +343,8 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
     private WifiConfiguration getExistingNetworkConfig(String ssid) {
         WifiConfiguration existingNetworkConfigForSSID = null;
         List<WifiConfiguration> configList = wifiManager.getConfiguredNetworks();
-        String comparableSSID = ('"' + ssid + '"'); // Add quotes because wifiConfig.SSID has them
+//        String comparableSSID = ('"' + ssid + '"'); // Add quotes because wifiConfig.SSID has them
+        String comparableSSID = "\"" + ssid + "\"";
         if (configList != null) {
             for (WifiConfiguration wifiConfig : configList) {
                 String savedSSID = wifiConfig.SSID;
