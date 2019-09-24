@@ -247,8 +247,8 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
         boolean isRemoveSuccess = wifiManager.removeNetwork(existingNetworkId);
         success = isDisableSuccess || isRemoveSuccess;
         Log.d(TAG, "removeSSID: begin03 " + isRemoveSuccess);
-        if (success && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            success = wifiManager.saveConfiguration();
+        if (isRemoveSuccess && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            wifiManager.saveConfiguration();
         }
         Log.d(TAG, "removeSSID: end " + success);
         //If not our config then success would be false
