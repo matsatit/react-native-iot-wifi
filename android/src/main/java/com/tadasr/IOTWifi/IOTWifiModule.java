@@ -96,9 +96,13 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
         }
 
         ScanResult scanResult = this.find(ssid);
+        String capabilities = isWEP ? "WEP" : "WPA";
+        if (scanResult != null && !TextUtils.isEmpty(scanResult.capabilities)) {
+            capabilities = scanResult.capabilities;
+        }
 //        Log.d(TAG, "connectToWifi: begin01");
 
-        WifiConfiguration configuration = createWifiConfiguration(ssid, passphrase, scanResult.capabilities);
+        WifiConfiguration configuration = createWifiConfiguration(ssid, passphrase, capabilities);
 
         List<WifiConfiguration> mWifiConfigList = wifiManager.getConfiguredNetworks();
 
@@ -135,7 +139,7 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
                 return;
             }
             Log.d(TAG, "connectToWifi: begin05");
-            boolean connected = pollForValidSSSID(20, ssid);
+            boolean connected = pollForValidSSSID(10, ssid);
             if (!connected) {
                 iotWifiCallback.invoke(errorFromCode(FailureCodes.FAILED_TO_CONNECT));
                 return;
@@ -179,6 +183,7 @@ public class IOTWifiModule extends ReactContextBaseJavaModule {
                 configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
                 configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP40);
             } else if (capabilities.contains("WPA") || capabilities.contains("WPA2") || capabilities.contains("WPA/WPA2 PSK")) { // WPA/WPA2
+                Log.d(TAG, "createWifiConfiguration: WPA");
                 configuration.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN);
 
                 configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
